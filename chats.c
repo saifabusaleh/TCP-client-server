@@ -1,6 +1,6 @@
 /*
-  *    C socket server
-*/
+ *    C socket server
+ */
 
 #include<stdio.h>
 #include<string.h>    
@@ -80,8 +80,8 @@ int main(int argc , char *argv[])
 }
 
 /*
-  * handle connection for each client
-* */
+ * handle connection for each client
+ * */
 void *connection_handler(void *server_socket_desc)
 {
   int sock = *(int*)server_socket_desc,read_size,i;
@@ -93,60 +93,75 @@ void *connection_handler(void *server_socket_desc)
   while((read_size = recv(sock ,&ID , sizeof(int) , MSG_PEEK)) > 0) {
     switch(ID) {
       case MSG_DOWN: 
-      read_size = recv(sock,&msgDOWN,sizeof(msgDOWN),0);
-      if(read_size<=0){printf("recv for msgDOWN failed"); continue; }
-      int deleteIndex=-1;
-      for(i=0;i<client_index;i++){
-        if(msgDOWN.m_port == clients[i].m_port){
-          deleteIndex=i;
-          break;
-        }
-      }
-      if(client_index == -1) {
-	printf("something gone wrong, can't remove client\n");
+	read_size = recv(sock,&msgDOWN,sizeof(msgDOWN),0);
+	if(read_size<=0){printf("recv for msgDOWN failed"); continue; }
+	int deleteIndex=-1;
+	for(i=0;i<client_index;i++){
+	  if(msgDOWN.m_port == clients[i].m_port){
+	    deleteIndex=i;
+	    break;
+	  }
+	}
+	if(client_index == -1) {
+	  printf("something gone wrong, can't remove client\n");
+	  break;
+	  
+	}
+	client temp;
+	for(i=deleteIndex;i<client_index-1;i++) {
+	  temp=  clients[i];
+	  clients[i] = clients[i+1];
+	  clients[i+1] = temp;
+	}
+	client_index--;
+	printf("msgDOWN: server: client deleted\n");
 	break;
 	
-      }
-      client temp;
-      for(i=deleteIndex;i<client_index-1;i++) {
-        temp=  clients[i];
-        clients[i] = clients[i+1];
-        clients[i+1] = temp;
-      }
-      client_index--;
-      printf("msgDOWN: server: client deleted\n");
-      break;
-      
       case MSG_UP:
-      read_size = recv(sock , &msgUP , sizeof(msgUP) , 0);
-      if(read_size<=0){ printf("recv for msgUP failed"); continue; }
-      if(client_index == CLIENTS_MAX ) {
-	printf("maximum number of clients reached \n");
-	msg_nack_t msgNACK;
-	msgNACK.m_type = MSG_NACK;
-	write(sock , &msgNACK , sizeof(msgNACK));
+	read_size = recv(sock , &msgUP , sizeof(msgUP) , 0);
+	if(read_size<=0){ printf("recv for msgUP failed"); continue; }
+	//if reached the max clients, then do not register
+	if(client_index == CLIENTS_MAX ) {
+	  printf("maximum number of clients reached \n");
+	  msg_nack_t msgNACK;
+	  msgNACK.m_type = MSG_NACK;
+	  write(sock , &msgNACK , sizeof(msgNACK));
+	  continue;
+	}
+	int continue_outer_loop =0;//flag to determine wether to continue to outer loop
+	//check if client name already exists
+	for(i=0;i<client_index;i++) {
+	  if(strcmp(clients[i].m_name,msgUP.m_name) ==0) {
+	    printf("client with the name of %s already exist, exiting...\n", msgUP.m_name);
+	    msg_nack_t msgNACK;
+	    msgNACK.m_type = MSG_NACK;
+	    write(sock , &msgNACK , sizeof(msgNACK));
+	    continue_outer_loop=1;
+	  }
+	}
+	if(continue_outer_loop ==0) {
+	  //register, add the client to the clients list
+	  clients[client_index].m_port = C_SRV_PORT+client_index+1;
+	  strcpy(clients[client_index].m_name,  msgUP.m_name);
+	  msg_ack_t msgACK;
+	  msgACK.m_type = MSG_ACK;
+	  msgACK.m_port = clients[client_index++].m_port;
+	  write(sock , &msgACK , sizeof(msgACK));
+	}
 	break;
-      }
-      clients[client_index].m_port = C_SRV_PORT+client_index+1;
-      strcpy(clients[client_index].m_name,  msgUP.m_name);
-      msg_ack_t msgACK;
-      msgACK.m_type = MSG_ACK;
-      msgACK.m_port = clients[client_index++].m_port;
-      write(sock , &msgACK , sizeof(msgACK));
-      break;
-      
+	
       case MSG_WHO:
-      msgHEADER.m_type = MSG_HDR;
-      msgHEADER.m_count = client_index;
-      write(sock,&msgHEADER,sizeof(msgHEADER));     
-      for(i=0;i<client_index;i++) {
-        msgPEER.m_type = MSG_PEER;
-        //	   msgPEER.m_addr = clients[i].m_addr;
-        msgPEER.m_port = clients[i].m_port;
-        strcpy(msgPEER.m_name,clients[i].m_name);
-        write(sock,&msgPEER,sizeof(msgPEER));
-      } 
-      break;
+	msgHEADER.m_type = MSG_HDR;
+	msgHEADER.m_count = client_index;
+	write(sock,&msgHEADER,sizeof(msgHEADER));     
+	for(i=0;i<client_index;i++) {
+	  msgPEER.m_type = MSG_PEER;
+	  //	   msgPEER.m_addr = clients[i].m_addr;
+	  msgPEER.m_port = clients[i].m_port;
+	  strcpy(msgPEER.m_name,clients[i].m_name);
+	  write(sock,&msgPEER,sizeof(msgPEER));
+	} 
+	break;
     }
     
   } 
