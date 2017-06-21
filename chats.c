@@ -3,12 +3,12 @@
 */
 
 #include<stdio.h>
-#include<string.h>    //strlen
-#include<stdlib.h>    //strlen
+#include<string.h>    
+#include<stdlib.h>    
 #include<sys/socket.h>
-#include<arpa/inet.h> //inet_addr
-#include<unistd.h>    //write
-#include<pthread.h> //for threading , link with lpthread
+#include<arpa/inet.h> 
+#include<unistd.h>    
+#include<pthread.h> 
 #include "chat.h"
 #define CLIENTS_MAX 10
 typedef struct clientStruct {
@@ -18,13 +18,14 @@ typedef struct clientStruct {
 
 //the thread function
 void *connection_handler(void *);
-client* clients;
-int client_index=0;
+client clients[CLIENTS_MAX];
+int client_index=0;//current index of the client in clients.
+
+
 int main(int argc , char *argv[])
 {
-  clients = (client *) malloc(sizeof(client)*CLIENTS_MAX);
-  int server_socket_desc , client_sock , c , *new_sock,socket_desc;
-  struct sockaddr_in server , client;
+  int server_socket_desc , client_sock, *new_sock;
+  struct sockaddr_in server;
   
   //Create socket
   server_socket_desc = socket(AF_INET , SOCK_STREAM , 0);
@@ -37,7 +38,7 @@ int main(int argc , char *argv[])
   //Prepare the sockaddr_in structure
   server.sin_family = AF_INET;
   server.sin_addr.s_addr = INADDR_ANY;
-  server.sin_port = htons( C_SRV_PORT + 1 );
+  server.sin_port = htons( C_SRV_PORT);
   
   //Bind
   if( bind(server_socket_desc,(struct sockaddr *)&server , sizeof(server)) < 0)
@@ -53,62 +54,58 @@ int main(int argc , char *argv[])
   
   //Accept and incoming connection
   puts("Waiting for incoming connections...");
-  c = sizeof(struct sockaddr_in);
   while( (client_sock = accept(server_socket_desc, (struct sockaddr *)0, (socklen_t*)0)) )
   {
     puts("Connection accepted");
     
-    pthread_t sniffer_thread;
+    pthread_t thread;
     new_sock = malloc(1);
     *new_sock = client_sock;
     
-    if( pthread_create( &sniffer_thread , NULL ,  connection_handler , (void*) new_sock) < 0)
+    if( pthread_create( &thread , NULL ,  connection_handler , (void*) new_sock) < 0)
     {
       perror("could not create thread");
+      close(*new_sock);
       return 1;
     }
-    
-    //Now join the thread , so that we dont terminate before the thread
-    //    pthread_join( sniffer_thread , NULL);
     puts(" thread  finished");
   }
   
   if (client_sock < 0)
   {
     perror("accept failed");
-    return 1;
   }
-  
+  close(server_socket_desc);
   return 0;
 }
 
 /*
-  * This will handle connection for each client
+  * handle connection for each client
 * */
 void *connection_handler(void *server_socket_desc)
 {
-  //Get the socket descriptor
-  int sock = *(int*)server_socket_desc;
-  int read_size,i;
-  char *message , client_message[C_BUFF_SIZE];
+  int sock = *(int*)server_socket_desc,read_size,i;
   msg_up_t msgUP;
   msg_down_t msgDOWN;
   msg_type_t ID;
-  in_addr_t address;
   msg_hdr_t msgHEADER;
   msg_peer_t msgPEER;
-  char name[C_BUFF_SIZE];
   while((read_size = recv(sock ,&ID , sizeof(int) , MSG_PEEK)) > 0) {
     switch(ID) {
       case MSG_DOWN: 
       read_size = recv(sock,&msgDOWN,sizeof(msgDOWN),0);
-      if(read_size<=0)printf("recv for msgDOWN failed");
-      int deleteIndex;
+      if(read_size<=0){printf("recv for msgDOWN failed"); continue; }
+      int deleteIndex=-1;
       for(i=0;i<client_index;i++){
         if(msgDOWN.m_port == clients[i].m_port){
           deleteIndex=i;
           break;
         }
+      }
+      if(client_index == -1) {
+	printf("something gone wrong, can't remove client\n");
+	break;
+	
       }
       client temp;
       for(i=deleteIndex;i<client_index-1;i++) {
@@ -122,7 +119,14 @@ void *connection_handler(void *server_socket_desc)
       
       case MSG_UP:
       read_size = recv(sock , &msgUP , sizeof(msgUP) , 0);
-      if(read_size<=0)printf("recv for msgUP failed"); 
+      if(read_size<=0){ printf("recv for msgUP failed"); continue; }
+      if(client_index == CLIENTS_MAX ) {
+	printf("maximum number of clients reached \n");
+	msg_nack_t msgNACK;
+	msgNACK.m_type = MSG_NACK;
+	write(sock , &msgNACK , sizeof(msgNACK));
+	break;
+      }
       clients[client_index].m_port = C_SRV_PORT+client_index+1;
       strcpy(clients[client_index].m_name,  msgUP.m_name);
       msg_ack_t msgACK;
@@ -148,6 +152,5 @@ void *connection_handler(void *server_socket_desc)
   } 
   close(sock);
   free(server_socket_desc);
-  
   return 0;
 }

@@ -321,7 +321,7 @@ typedef struct msg_text
 {
     msg_type_t	m_type;				// = MSG_TEXT
     int			m_size;				// size of text
-    char        m_text[0];			// text of given size
+    char        m_text[C_BUFF_SIZE];			// text of given size
 }
     msg_text_t;
 
