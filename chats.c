@@ -68,6 +68,7 @@ int main(int argc , char *argv[])
       close(*new_sock);
       return 1;
     }
+   //pthread_join( thread , NULL);
     puts(" thread  finished");
   }
   
@@ -76,6 +77,7 @@ int main(int argc , char *argv[])
     perror("accept failed");
   }
   close(server_socket_desc);
+  printf("Returning 0\n");
   return 0;
 }
 
@@ -84,13 +86,14 @@ int main(int argc , char *argv[])
  * */
 void *connection_handler(void *server_socket_desc)
 {
+  printf("entered connection_handler thread\n");
   int sock = *(int*)server_socket_desc,read_size,i;
   msg_up_t msgUP;
   msg_down_t msgDOWN;
   msg_type_t ID;
   msg_hdr_t msgHEADER;
   msg_peer_t msgPEER;
-  while((read_size = recv(sock ,&ID , sizeof(int) , MSG_PEEK)) > 0) {
+  while((read_size = recv(sock ,&ID , sizeof(msg_type_t) , MSG_PEEK)) > 0) {
     switch(ID) {
       case MSG_DOWN: 
 	read_size = recv(sock,&msgDOWN,sizeof(msgDOWN),0);
@@ -151,6 +154,7 @@ void *connection_handler(void *server_socket_desc)
 	break;
 	
       case MSG_WHO:
+	printf("entered msg_who\n");
 	msgHEADER.m_type = MSG_HDR;
 	msgHEADER.m_count = client_index;
 	write(sock,&msgHEADER,sizeof(msgHEADER));     
@@ -161,11 +165,19 @@ void *connection_handler(void *server_socket_desc)
 	  strcpy(msgPEER.m_name,clients[i].m_name);
 	  write(sock,&msgPEER,sizeof(msgPEER));
 	} 
-	break;
+	//close(sock);
+	return 0;
     }
-    
-  } 
-  close(sock);
+
+
+  }
+  if(read_size < 0) {
+    printf("recv failed in connection_handler thread\n");
+  }
+  if(read_size == 0 ) {
+      printf(" disconncted\n");
+  }
+  printf("closing socket from thread..\n");
   free(server_socket_desc);
   return 0;
 }

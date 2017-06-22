@@ -21,7 +21,7 @@
   } client_info_t; // temporary struct that saves the client info in at after doing MSG_WHO
   
   void *connection_handler();
-  void senderClientReceive(int peer_sock);
+  void getFromInputAndSendToPeer(int peer_sock);
   int main(int argc , char *argv[])
   {
     client_info_t client_info[CLIENTS_MAX];
@@ -29,7 +29,7 @@
     int number_of_connected_clients=0;//number of connected clients after doing msg_who
     int is_msg_who_passed = FALSE; // boolean that telling if we already did msg_who or not
     struct sockaddr_in client;
-    int ID2;
+    msg_type_t id;
     char message[C_BUFF_SIZE] , client_reply[C_BUFF_SIZE], peer_message[C_BUFF_SIZE];
     if(argc != 2) {
       printf("you must write the desired client name, example ./client terminator\n");
@@ -60,7 +60,7 @@
     msgUP.m_type = MSG_UP;
     strcpy(msgUP.m_name, argv[1]);
     
-    //Send msgUP
+    //Send msgUP, to register the current client in the server
     if( send(sock ,&msgUP , sizeof(msgUP) , 0) < 0)
     {
       puts("Send failed");
@@ -68,38 +68,59 @@
     }
     msg_ack_t resp;
     //Receive a reply
-    int read_size = recv(sock,&ID2,sizeof(int),MSG_PEEK);
+    int read_size = recv(sock,&id,sizeof(int),MSG_PEEK);
     if(read_size<=0) {
       printf("recv failed \n");
+      close(sock);
       return 0;
     }
-    if(ID2 == MSG_ACK) {
-    if( recv(sock , &resp , sizeof(msg_ack_t) , 0) < 0)
-    {
-      puts("recv failed");
-      return 0;
-    }
-    my_port = resp.m_port;
-    pthread_t thread;
     
-    if( pthread_create( &thread , NULL ,  connection_handler) < 0)
-    {
-      perror("could not create thread");
-      return 1;
-    }
-    } else if(ID2 == MSG_NACK) {
-	printf("received msg_nack from the server, exiting.. \n");
+    if(id == MSG_ACK) {
+      if( recv(sock , &resp , sizeof(msg_ack_t) , 0) < 0)
+      {
+	puts("recv failed");
+	close(sock);
 	return 0;
+      }
+      my_port = resp.m_port;
+      pthread_t thread;
+      
+      if( pthread_create( &thread , NULL ,  connection_handler) < 0)
+      {
+	perror("could not create thread");
+	close(sock);
+	return 1;
+      }
+    } else if(id == MSG_NACK) {
+      printf("received msg_nack from the server, exiting.. \n");
+      close(sock);
+      return 0;
     }
+    //close the socket that use for msg_up
+    close(sock);
     
-    
-    //keep communicating with client
     while(1)
     {
       if(is_in_conn == 1) continue;
       printf("Commands: \n MSG_DOWN -- to disconnect from the client \n MSG_WHO - to get connected clients list \n PEER - to connect to another client \n\n:");
       scanf("%s",message);
       if(strcmp(message,"MSG_WHO")==0){
+	sock = socket(AF_INET , SOCK_STREAM , 0);
+	if (sock == -1)
+	{
+	  printf("Could not create socket");
+	  close(sock);
+	  return 1;
+	}
+	puts("Socket created");
+	//Connect to remote client
+	if (connect(sock , (struct sockaddr *)&client , 
+	  sizeof(client)) < 0)
+	{
+	  perror("connect failed. Error");
+	  close(sock);
+	  return 1;
+	}
 	is_msg_who_passed = TRUE;
 	msg_who_t msgwho;
 	msgwho.m_type = MSG_WHO;
@@ -113,6 +134,7 @@
 	if( recv(sock , &msgHDR , sizeof(msgHDR) , 0) < 0)
 	{
 	  puts("recv failed");
+	  close(sock);
 	  break;
 	}
 	printf("number of connected clients: %d \n",msgHDR.m_count);
@@ -122,16 +144,35 @@
 	  if( recv(sock , &msgPEER , sizeof(msgPEER) , 0) < 0)
 	  {
 	    puts("recv failed");
+	    	  close(sock);
 	    break;
 	  }
 	  client_info[i].address = inet_addr("127.0.0.1");
-	  client_info[i].port = msgPEER.m_port; //TODO: maybe add name?
+	  client_info[i].port = msgPEER.m_port; 
 	  strcpy(client_info[i].m_name,msgPEER.m_name); 
 	  printf("[%d] name: %s port: %d\n",i,msgPEER.m_name,msgPEER.m_port);
 	}
+	//close the socket of msg_who
+        close(sock);
 	continue;
       }
       if(strcmp(message,"MSG_DOWN")==0) {
+	sock = socket(AF_INET , SOCK_STREAM , 0);
+	if (sock == -1)
+	{
+	  printf("Could not create socket");
+	  close(sock);
+	  return 1;
+	}
+	puts("Socket created");
+	//Connect to remote client
+	if (connect(sock , (struct sockaddr *)&client , 
+	  sizeof(client)) < 0)
+	{
+	  perror("connect failed. Error");
+	  close(sock);
+	  return 1;
+	}
 	msg_down_t msgDOWN;
 	msgDOWN.m_type = MSG_DOWN;
 	msgDOWN.m_port = my_port;
@@ -142,6 +183,8 @@
 	  return 1;
 	}
 	printf("Client has been successfully unregistered, closing..\n");
+	//close the socket of msg_down
+	close(sock);
 	return 0;
       }
       
@@ -207,26 +250,28 @@
 	  printf("the user agreed\n, send text to send to user, enter quit to close connection\n");
 	  pthread_t thread;
 	  
-	  if( pthread_create( &thread , NULL ,  senderClientReceive,peer_sock) < 0)
+	  if( pthread_create( &thread , NULL ,  getFromInputAndSendToPeer,peer_sock) < 0)
 	  {
 	    perror("could not create thread");
 	    return 1;
 	  }
 	  is_in_conn = 1;
 	  while(is_in_conn == 1){
-	    int read_size = recv(peer_sock,&ID2,sizeof(int),MSG_PEEK);
+	    int read_size = recv(peer_sock,&id,sizeof(int),MSG_PEEK);
 	    if(read_size<=0) {
 	      printf("quit called, will close now and get back to main menu \n");
+	      close(peer_sock);
 	      break;
 	    }
-	    if(ID2 == MSG_TEXT) {
+	    if(id == MSG_TEXT) {
 	      read_size = recv(peer_sock,&msgTEXT,sizeof(msgTEXT),0);
 	      if(read_size<=0)printf("inner recv failed");
 	      printf("%s\n",msgTEXT.m_text);
 	    }
-	    else if( ID2 == MSG_END) {
+	    else if( id == MSG_END) {
 	      printf("closing connection\n");
 	      is_in_conn = 0;
+	      close(peer_sock);
 	    }
 	  }
 	}
@@ -236,8 +281,7 @@
       printf("can't find your command, notice that the commands is CASE SENSETIVE!! \n");
     }
     
-    printf("closing the socket, and exiting the client..\n");
-    close(sock);
+    printf("exiting the client..\n");
     return 0;
   }
   
@@ -247,7 +291,8 @@
     struct sockaddr_in client;
     msg_conn_t msgCONN;
     msg_text_t msgTEXT;
-    int ID2,resp;
+    int resp;
+    msg_type_t id;
     //Create socket
     client_socket_desc = socket(AF_INET , SOCK_STREAM , 0);
     if (client_socket_desc == -1)
@@ -300,7 +345,7 @@
 	}
 	//if user agreed then proceed
 	pthread_t thread;
-	if( pthread_create( &thread , NULL ,  senderClientReceive, new_sock) < 0)
+	if( pthread_create( &thread , NULL ,  getFromInputAndSendToPeer, new_sock) < 0)
 	{
 	  perror("could not create thread");
 	  return 0;
@@ -309,15 +354,16 @@
 	
 	while(is_in_conn ==1 ) {
 	  
-	  read_size = recv(new_sock,&ID2,sizeof(int),MSG_PEEK);
-	  if(ID2 == MSG_TEXT) {
+	  read_size = recv(new_sock,&id,sizeof(int),MSG_PEEK);
+	  if(id == MSG_TEXT) {
 	    read_size = recv(new_sock,&msgTEXT,sizeof(msgTEXT),0);
 	    printf("%s\n",msgTEXT.m_text);
 	  }
-	  else if(ID2 == MSG_END) {
+	  else if(id == MSG_END) {
 	    printf("closing connection\n");
 	    is_in_conn = 0;
 	    close(new_sock);
+	    return 0;
 	  }       
 	}
       }
@@ -331,7 +377,7 @@
     return 0;
   }
   
-  void senderClientReceive(int peer_sock) {
+  void getFromInputAndSendToPeer(int peer_sock) {
     msg_text_t msgTEXT;
     char peer_message[C_BUFF_SIZE];
     while(1) {

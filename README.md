@@ -13,6 +13,9 @@ will get msg_nack.
 
 *Client can't perform PEER to himself(can't talk to himself), if he try to talk to himself he will get error msg.
 
+* Every connection message from the client is performed in new socket, and then closed in the end.
+
+*In peer to peer, when client receive connection, he can agree the connection and also can refuse it.
 USAGE:
 
 MSG_UP will get called automatically when launching the client, and it will open socket with listen with the specific port that received

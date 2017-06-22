@@ -124,7 +124,7 @@
  *  Port number for chat server. 
  *  Also the base for all port numbers allocated to peers.
  */ 
-#define C_SRV_PORT 	12360	
+#define C_SRV_PORT 	13260	
 
 /* 
  *  Period of time (in seconds) a client should wait between 
