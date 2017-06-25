@@ -38,7 +38,7 @@ int main(int argc , char *argv[])
   //Prepare the sockaddr_in structure
   server.sin_family = AF_INET;
   server.sin_addr.s_addr = INADDR_ANY;
-  server.sin_port = htons( C_SRV_PORT);
+  server.sin_port = htons( C_SRV_PORT  );
   
   //Bind
   if( bind(server_socket_desc,(struct sockaddr *)&server , sizeof(server)) < 0)

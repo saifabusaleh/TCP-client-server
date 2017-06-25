@@ -1,5 +1,5 @@
   /*
-   *    C ECHO client 
+   *    C client 
    * 		all right reserved to Saif.
    */
   #include<stdio.h> //printf
@@ -25,12 +25,12 @@
   int main(int argc , char *argv[])
   {
     client_info_t client_info[CLIENTS_MAX];
-    int sock,i,client_recieving_socket;
+    int sock,i;
     int number_of_connected_clients=0;//number of connected clients after doing msg_who
     int is_msg_who_passed = FALSE; // boolean that telling if we already did msg_who or not
     struct sockaddr_in client;
     msg_type_t id;
-    char message[C_BUFF_SIZE] , client_reply[C_BUFF_SIZE], peer_message[C_BUFF_SIZE];
+    char message[C_BUFF_SIZE];
     if(argc != 2) {
       printf("you must write the desired client name, example ./client terminator\n");
       return;
@@ -45,7 +45,7 @@
     
     client.sin_addr.s_addr = inet_addr("127.0.0.1");
     client.sin_family = AF_INET;
-    client.sin_port = htons( C_SRV_PORT);
+    client.sin_port = htons( C_SRV_PORT );
     
     //Connect to remote client
     if (connect(sock , (struct sockaddr *)&client , 
@@ -245,7 +245,6 @@
 	  break;
 	}
 	if(msgRESP.m_agree == 1) {
-	  char peer_message[C_BUFF_SIZE];
 	  msg_text_t msgTEXT;
 	  printf("the user agreed\n, send text to send to user, enter quit to close connection\n");
 	  pthread_t thread;
@@ -366,10 +365,7 @@
 	    return 0;
 	  }       
 	}
-      }
-      
-      
-      
+      }  
     }
     printf("exiting client thread\n");
     
