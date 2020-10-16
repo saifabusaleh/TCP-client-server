@@ -167,6 +167,8 @@ typedef int msg_type_t;
 
 /*
  *  message formats: MSG_UP 
+ 
+ * typedef is used to create a dublicate of data type
  *  Used by clients to notify the server of their existence.
  */
 typedef struct msg_up 
